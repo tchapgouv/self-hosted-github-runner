@@ -323,7 +323,8 @@ resources:
                 apt-get -qy purge unattended-upgrades
                 # install default package
                 apt-get -qqy update
-                apt-get -qy install curl git wget file sudo jq bzip2 unzip zip jq
+                apt-get -qy install curl git wget file sudo jq bzip2 unzip zip jq ntp
+                systemctl restart ntp
                 # Add authorized_keys to ubuntu account
                 (
                     HOME=/home/ubuntu
