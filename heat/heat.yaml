@@ -344,6 +344,8 @@ resources:
                     chown $user.$user /home/$user -R
                   done
                 )
+                # Allow sudo group to sudoers without password
+                echo "%sudo ALL=(ALL:ALL) NOPASSWD:ALL" | tee /etc/sudoers.d/00-sudo-users
               params:
                 $http_proxy: { get_param: http_proxy }
                 $no_proxy: { get_param: no_proxy }
