@@ -6,10 +6,12 @@ Optionnel:
 - Nombre de runner dans le pool
 - Instance avec "boot on volume"
 - Access ssh optionnel vers un bastion dans le subnet des runners
-- Si ssh est activé, les ressources suivantes : Floating IP, LoadBalancer, bastion sont activées
+- Si ssh est activé, les ressources suivantes : Floating IP, LoadBalancer, bastion sont activés
+  - Le provider de loadbalancer  et l algorithm de repartition sont configurable (`default amphora/ROUND_ROBIN ou ovn/SOURCE_IP_PORT `)
 
 ## Déploiement
 Pre requis:
+- version de l api heat/openstack (> rocky)
 - cli openstack installée (ou accès à horizon)
 - credentials openstack variable `OS_`
 

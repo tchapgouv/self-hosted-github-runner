@@ -1,5 +1,5 @@
 ---
-heat_template_version: 2016-10-14
+heat_template_version: 2018-08-31
 
 description: Runner heat stack
 
@@ -20,6 +20,21 @@ parameters:
   enable_fip:
     type: string
     default: "false"
+
+  lb_provider:
+    type: string
+    description: "amphora or ovn"
+    default: amphora
+
+  lb_algorithm:
+    type: string
+    description: "default(if amphora = ROUND_ROBIN) , if ovn use SOURCE_IP_PORT"
+    default: ROUND_ROBIN
+
+  lb_ssh_port:
+    type: number
+    description: "ssh port from outside"
+    default: 2222
 
   runner_count:
     type: number
@@ -92,7 +107,7 @@ parameters:
     default: ""
   RUNNER_URL_DEPLOYER_SCRIPT:
     type: string
-    description: Url to install-runner-scripts 
+    description: Url to install-runner-scripts
     default: "https://raw.githubusercontent.com/tchapgouv/self-hosted-github-runner/main/install-runner-scripts/deploy-runner.sh"
   GH_RUNNER_VERSION:
     type: string
@@ -186,7 +201,13 @@ resources:
   runner_keypair:
     type: OS::Nova::KeyPair
     properties:
-      name: { get_param: keypair_name }
+      name:
+        str_replace:
+          template: $keypair_name-$stack_name-$stack_id
+          params:
+            $keypair_name: { get_param: keypair_name }
+            $stack_id: { get_param: OS::stack_id }
+            $stack_name: { get_param: OS::stack_name }
       public_key: { get_param: keypair_public_key }
 
   runner_security_group:
@@ -210,6 +231,7 @@ resources:
     properties:
       parts:
         - config: {get_resource: cloud_config}
+        - config: {get_resource: cloud_config_runner}
         - config: {get_resource: start_install}
 
   cloud_config:
@@ -232,6 +254,67 @@ resources:
               params:
                 $http_proxy: { get_param: http_proxy }
                 $no_proxy: { get_param: no_proxy }
+        - path: /root/prepare.sh
+          owner: root:root
+          permissions: "0755"
+          content:
+            str_replace:
+              template: |
+                #!/bin/bash
+                set -x -e -o pipefail
+                export DEBIAN_FRONTEND=noninteractive
+                # set proxy if defined
+                if [ -n "$http_proxy" ]; then
+                  export http_proxy=$http_proxy
+                  export https_proxy=$http_proxy
+                  export no_proxy=$no_proxy
+                fi
+                # Stop and disable apt-daily upgrade services;
+                systemctl stop apt-daily.timer
+                systemctl disable apt-daily.timer
+                systemctl disable apt-daily.service
+                systemctl stop apt-daily-upgrade.timer
+                systemctl disable apt-daily-upgrade.timer
+                systemctl disable apt-daily-upgrade.service
+                apt-get -qy purge unattended-upgrades
+                # install default package
+                apt-get -qqy update
+                apt-get -qy install curl git wget file sudo jq bzip2 unzip zip jq ntp
+                systemctl restart ntp
+                # Add authorized_keys to ubuntu account
+                (
+                    HOME=/home/ubuntu
+                    if [ ! -d $HOME/.ssh ] ; then mkdir -p $HOME/.ssh ; fi
+                    echo '$ssh_authorized_keys' |  jq -re ".[].key" >> $HOME/.ssh/authorized_keys
+                    chown ubuntu. -R $HOME/.ssh
+                )
+                # Create user account with ssh/authorized_keys
+                (
+                   echo '$ssh_authorized_keys' | \
+                   jq -rce '.[]'|while read data ; do
+                    user=$(echo "$data" |jq -re '.user')
+                    case "$(lsb_release -sr)" in 20*) useradd_opt="--badnames" ;; esac ; echo "$useradd_opt"
+                    useradd $useradd_opt -k /etc/skel -m -s /bin/bash -U -G sudo $user
+                    mkdir -p /home/$user/.ssh
+                    echo "$data" |jq -re '.key' >> /home/$user/.ssh/authorized_keys
+                    chown $user.$user /home/$user -R
+                  done
+                )
+                # Allow sudo group to sudoers without password
+                echo "%sudo ALL=(ALL:ALL) NOPASSWD:ALL" | tee /etc/sudoers.d/00-sudo-users
+              params:
+                $http_proxy: { get_param: http_proxy }
+                $no_proxy: { get_param: no_proxy }
+                $ssh_authorized_keys: { get_param: ssh_authorized_keys }
+        runcmd:
+          - /root/prepare.sh
+
+  cloud_config_runner:
+    type: OS::Heat::CloudConfig
+    properties:
+      cloud_config:
+        merge_how: dict(recurse_array)+list(append)
+        write_files:
         - path: /home/ubuntu/config.cfg
           owner: ubuntu:ubuntu
           permissions: "0755"
@@ -277,57 +360,6 @@ resources:
                 $GH_URL: { get_param: GH_URL }
                 $GH_LABEL: { get_param: GH_LABEL }
                 $GH_TOKEN: { get_param: GH_TOKEN }
-        - path: /root/prepare.sh
-          owner: root:root
-          permissions: "0755"
-          content:
-            str_replace:
-              template: |
-                #!/bin/bash
-                set -x -e -o pipefail
-                export DEBIAN_FRONTEND=noninteractive
-                # set proxy if defined
-                if [ -n "$http_proxy" ]; then
-                  export http_proxy=$http_proxy
-                  export https_proxy=$http_proxy
-                  export no_proxy=$no_proxy
-                fi
-                # Stop and disable apt-daily upgrade services;
-                systemctl stop apt-daily.timer
-                systemctl disable apt-daily.timer
-                systemctl disable apt-daily.service
-                systemctl stop apt-daily-upgrade.timer
-                systemctl disable apt-daily-upgrade.timer
-                systemctl disable apt-daily-upgrade.service
-                apt-get -qy purge unattended-upgrades
-                # install default package
-                apt-get -qqy update
-                apt-get -qy install curl git wget file sudo jq bzip2 unzip zip jq
-                # Add authorized_keys to ubuntu account
-                (
-                    HOME=/home/ubuntu
-                    if [ ! -d $HOME/.ssh ] ; then mkdir -p $HOME/.ssh ; fi
-                    echo '$ssh_authorized_keys' |  jq -re ".[].key" >> $HOME/.ssh/authorized_keys
-                    chown ubuntu. -R $HOME/.ssh
-                )
-                # Create user account with ssh/authorized_keys
-                (
-                   echo '$ssh_authorized_keys' | \
-                   jq -rce '.[]'|while read data ; do
-                    user=$(echo "$data" |jq -re '.user')
-                    case "$(lsb_release -sr)" in 20*) useradd_opt="--badnames" ;; esac ; echo "$useradd_opt"
-                    useradd $useradd_opt -k /etc/skel -m -s /bin/bash -U -G sudo $user
-                    mkdir -p /home/$user/.ssh
-                    echo "$data" |jq -re '.key' >> /home/$user/.ssh/authorized_keys
-                    chown $user.$user /home/$user -R
-                  done
-                )
-              params:
-                $http_proxy: { get_param: http_proxy }
-                $no_proxy: { get_param: no_proxy }
-                $ssh_authorized_keys: { get_param: ssh_authorized_keys }
-        runcmd:
-          - /root/prepare.sh
 
   start_install:
     type: "OS::Heat::SoftwareConfig"
@@ -382,6 +414,10 @@ resources:
   # runner group
   rg:
     depends_on:
+      - interface_admin
+      - interface_services
+      - interface_apps
+      - subnet
       - runner_keypair
       - runner_security_group
     type: OS::Heat::ResourceGroup
@@ -394,7 +430,7 @@ resources:
             list_join: [ '-', [ 'runner', { get_param: runner_env }, "%index%" ]]
           image: { get_param: runner_image }
           flavor: { get_param: runner_flavor }
-          keypair: { get_param: keypair_name }
+          keypair: { get_resource: runner_keypair }
           vol_size: { get_param: runner_vol_size }
           vol_type: { get_param: runner_vol_type }
           security_group:
@@ -407,6 +443,10 @@ resources:
   bastion:
     condition: enable_fip
     depends_on:
+      - interface_admin
+      - interface_services
+      - interface_apps
+      - subnet
       - runner_keypair
       - runner_security_group
     type: OS::Stack::Runner
@@ -414,8 +454,8 @@ resources:
       name:
         list_join: [ '-', [ 'bastion', 'runner', { get_param: runner_env } ]]
       image: { get_param: runner_image }
+      keypair: { get_resource: runner_keypair }
       flavor: { get_param: runner_flavor }
-      keypair: { get_param: keypair_name }
       vol_size: { get_param: runner_vol_size }
       vol_type: { get_param: runner_vol_type }
       security_group:
@@ -426,44 +466,73 @@ resources:
       boot_on_volume: { get_param: boot_on_volume }
 
   poolmember:
+    depends_on:
+      - pool
     condition: enable_fip
     type: OS::Octavia::PoolMember
     properties:
-      address: { get_attr: [ bastion, private_ip] }
+      address: { get_attr: [ bastion, private_ip ] }
       pool: { get_resource: pool }
       protocol_port: 22
       subnet: { get_resource: subnet }
 
   pool:
     condition: enable_fip
+    depends_on:
+      - listener
     type: OS::Octavia::Pool
     properties:
-      lb_algorithm: ROUND_ROBIN
+      lb_algorithm: { get_param: lb_algorithm }
       protocol: TCP
       listener: { get_resource: listener }
 
   listener:
+    depends_on:
+      - lb
     condition: enable_fip
     type: OS::Octavia::Listener
     properties:
       loadbalancer: { get_resource: lb }
       protocol: TCP
-      protocol_port: 2222
+      protocol_port: { get_param: lb_ssh_port }
 
   lb:
+    depends_on:
+      - interface_admin
+      - interface_services
+      - interface_apps
+      - subnet
     condition: enable_fip
     type: OS::Octavia::LoadBalancer
     properties:
      vip_subnet: { get_resource: subnet }
+     provider: { get_param: lb_provider }
 
   bastion_floating_ip:
     condition: enable_fip
     type: OS::Neutron::FloatingIP
-    depends_on:
-      - lb
     properties:
       floating_network: { get_param: fip_admin_net }
+
+  bastion_floating_ip_association:
+    condition: enable_fip
+    type: OS::Neutron::FloatingIPAssociation
+    depends_on:
+      - bastion_floating_ip
+      - lb
+    properties:
+      floatingip_id: { get_resource: bastion_floating_ip }
       port_id: { get_attr: [ lb, vip_port_id ] }
+
+# uncomment In case of direct FIP on bastion
+#  bastion_floating_ip:
+#    condition: enable_fip
+#    type: OS::Neutron::FloatingIP
+#    depends_on:
+#      - bastion
+#    properties:
+#      floating_network: { get_param: fip_admin_net }
+#      port_id: { get_attr: [ bastion, port_id ] }
 
 outputs:
   router_admin_id:
@@ -508,3 +577,6 @@ outputs:
         - enable_fip
         - { get_resource: bastion_floating_ip }
         - ""
+
+  keypair:
+    value: { get_resource: runner_keypair }
