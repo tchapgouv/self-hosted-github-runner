@@ -231,6 +231,7 @@ resources:
     properties:
       parts:
         - config: {get_resource: cloud_config}
+        - config: {get_resource: cloud_config_runner}
         - config: {get_resource: start_install}
 
   cloud_config:
@@ -253,51 +254,6 @@ resources:
               params:
                 $http_proxy: { get_param: http_proxy }
                 $no_proxy: { get_param: no_proxy }
-        - path: /home/ubuntu/config.cfg
-          owner: ubuntu:ubuntu
-          permissions: "0755"
-          content:
-            str_replace:
-              template: |
-                #!/bin/bash
-                if [[ -n "$http_proxy" ]]; then
-                  export http_proxy='$http_proxy'
-                  export https_proxy='$http_proxy'
-                fi
-                if [[ -n "$no_proxy" ]]; then
-                  export no_proxy='$no_proxy'
-                fi
-                if [[ -n "$RUNNER_URL_DEPLOYER_SCRIPT" ]]; then
-                  export RUNNER_URL_DEPLOYER_SCRIPT='$RUNNER_URL_DEPLOYER_SCRIPT'
-                fi
-                if [[ -n "$GH_RUNNER_VERSION" ]]; then
-                  export GH_RUNNER_VERSION='$GH_RUNNER_VERSION'
-                fi
-                if [[ -n "$GH_RUNNER_HASH" ]]; then
-                  export GH_RUNNER_HASH='$GH_RUNNER_HASH'
-                fi
-                if [[ -n "$GH_RUNNERGROUP" ]]; then
-                  export GH_RUNNERGROUP='$GH_RUNNERGROUP'
-                fi
-                if [[ -n "$GH_URL" ]]; then
-                  export GH_URL='$GH_URL'
-                fi
-                if [[ -n "$GH_TOKEN" ]]; then
-                  export GH_TOKEN='$GH_TOKEN'
-                fi
-                if [[ -n "$GH_LABEL" ]]; then
-                  export GH_LABEL='$GH_LABEL'
-                fi
-              params:
-                $http_proxy: { get_param: http_proxy }
-                $no_proxy: { get_param: no_proxy }
-                $RUNNER_URL_DEPLOYER_SCRIPT: { get_param: RUNNER_URL_DEPLOYER_SCRIPT }
-                $GH_RUNNER_VERSION: { get_param: GH_RUNNER_VERSION }
-                $GH_RUNNER_HASH: { get_param: GH_RUNNER_HASH }
-                $GH_RUNNERGROUP: { get_param: GH_RUNNERGROUP }
-                $GH_URL: { get_param: GH_URL }
-                $GH_LABEL: { get_param: GH_LABEL }
-                $GH_TOKEN: { get_param: GH_TOKEN }
         - path: /root/prepare.sh
           owner: root:root
           permissions: "0755"
@@ -352,6 +308,58 @@ resources:
                 $ssh_authorized_keys: { get_param: ssh_authorized_keys }
         runcmd:
           - /root/prepare.sh
+
+  cloud_config_runner:
+    type: OS::Heat::CloudConfig
+    properties:
+      cloud_config:
+        merge_how: dict(recurse_array)+list(append)
+        write_files:
+        - path: /home/ubuntu/config.cfg
+          owner: ubuntu:ubuntu
+          permissions: "0755"
+          content:
+            str_replace:
+              template: |
+                #!/bin/bash
+                if [[ -n "$http_proxy" ]]; then
+                  export http_proxy='$http_proxy'
+                  export https_proxy='$http_proxy'
+                fi
+                if [[ -n "$no_proxy" ]]; then
+                  export no_proxy='$no_proxy'
+                fi
+                if [[ -n "$RUNNER_URL_DEPLOYER_SCRIPT" ]]; then
+                  export RUNNER_URL_DEPLOYER_SCRIPT='$RUNNER_URL_DEPLOYER_SCRIPT'
+                fi
+                if [[ -n "$GH_RUNNER_VERSION" ]]; then
+                  export GH_RUNNER_VERSION='$GH_RUNNER_VERSION'
+                fi
+                if [[ -n "$GH_RUNNER_HASH" ]]; then
+                  export GH_RUNNER_HASH='$GH_RUNNER_HASH'
+                fi
+                if [[ -n "$GH_RUNNERGROUP" ]]; then
+                  export GH_RUNNERGROUP='$GH_RUNNERGROUP'
+                fi
+                if [[ -n "$GH_URL" ]]; then
+                  export GH_URL='$GH_URL'
+                fi
+                if [[ -n "$GH_TOKEN" ]]; then
+                  export GH_TOKEN='$GH_TOKEN'
+                fi
+                if [[ -n "$GH_LABEL" ]]; then
+                  export GH_LABEL='$GH_LABEL'
+                fi
+              params:
+                $http_proxy: { get_param: http_proxy }
+                $no_proxy: { get_param: no_proxy }
+                $RUNNER_URL_DEPLOYER_SCRIPT: { get_param: RUNNER_URL_DEPLOYER_SCRIPT }
+                $GH_RUNNER_VERSION: { get_param: GH_RUNNER_VERSION }
+                $GH_RUNNER_HASH: { get_param: GH_RUNNER_HASH }
+                $GH_RUNNERGROUP: { get_param: GH_RUNNERGROUP }
+                $GH_URL: { get_param: GH_URL }
+                $GH_LABEL: { get_param: GH_LABEL }
+                $GH_TOKEN: { get_param: GH_TOKEN }
 
   start_install:
     type: "OS::Heat::SoftwareConfig"
