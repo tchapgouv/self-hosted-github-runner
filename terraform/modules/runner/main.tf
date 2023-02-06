@@ -33,18 +33,23 @@ data "cloudinit_config" "runner_config" {
 }
 
 resource "openstack_compute_instance_v2" "runner" {
-  count       = var.runner_count
-  name        = "${terraform.workspace}-${var.runner_name != "" ? var.runner_name : "runner"}-${count.index + 1}"
-  flavor_name = var.flavor
-  key_pair    = var.keypair_name
-  user_data   = data.cloudinit_config.runner_config.rendered
+  count        = var.runner_count
+  name         = "${terraform.workspace}-${var.runner_name != "" ? var.runner_name : "runner"}-${count.index + 1}"
+  image_name   = var.volume_size > 0 ? null : var.image
+  flavor_name  = var.flavor
+  key_pair     = var.keypair_name
+  user_data    = data.cloudinit_config.runner_config.rendered
+  config_drive = true
 
-  block_device {
-    uuid                  = element(openstack_blockstorage_volume_v3.runner_root.*.id, count.index)
-    source_type           = "volume"
-    boot_index            = 0
-    destination_type      = "volume"
-    delete_on_termination = true
+  dynamic "block_device" {
+    for_each = var.volume_size > 0 ? [1] : []
+    content {
+      uuid                  = element(openstack_blockstorage_volume_v3.runner_root.*.id, count.index)
+      source_type           = "volume"
+      boot_index            = 0
+      destination_type      = "volume"
+      delete_on_termination = true
+    }
   }
 
   network {
