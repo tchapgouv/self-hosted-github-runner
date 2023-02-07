@@ -8,6 +8,10 @@ cat <<'EOF_SCRIPT' > /home/ubuntu/${script}
 
 ## https://github.com/actions/runner-images/blob/4994130a965d5529b240818de583d48febefcfdf/images/linux/scripts/base/apt.sh
 
+set -x -e -o pipefail
+
+[ -f /home/ubuntu/config.cfg ] && source /home/ubuntu/config.cfg
+
 # Stop and disable apt-daily upgrade services;
 systemctl stop apt-daily.timer
 systemctl disable apt-daily.timer
@@ -15,6 +19,14 @@ systemctl disable apt-daily.service
 systemctl stop apt-daily-upgrade.timer
 systemctl disable apt-daily-upgrade.timer
 systemctl disable apt-daily-upgrade.service
+
+# Proxy
+if [[ -n "$http_proxy" ]] ; then
+cat <<EOF > /etc/apt/apt.conf.d/99proxy
+Acquire::http::Proxy "$http_proxy";
+Acquire::https::Proxy "$http_proxy";
+EOF
+fi
 
 # Enable retry logic for apt up to 10 times
 echo "APT::Acquire::Retries \"10\";" > /etc/apt/apt.conf.d/80-retries
