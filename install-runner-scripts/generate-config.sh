@@ -30,4 +30,8 @@ export GH_TOKEN='${GH_TOKEN}'
 %{ if GH_LABEL != "" ~}
 export GH_LABEL='${GH_LABEL}'
 %{ endif ~}
+%{ if UPDATE_SSL_CA_URL != "" ~}
+export UPDATE_SSL_CA_URL='${UPDATE_SSL_CA_URL}'
+%{ endif ~}
+
 EOF

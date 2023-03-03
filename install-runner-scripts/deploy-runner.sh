@@ -20,7 +20,7 @@ export RUNNER_URL_DEPLOYER_SCRIPT="${RUNNER_URL_DEPLOYER_SCRIPT:?RUNNER_URL_DEPL
 URL_PATH=$(dirname ${RUNNER_URL_DEPLOYER_SCRIPT})
 
 # list of ordered install scripts
-CONFIG_SCRIPTS_FILE="package.sh apt.sh git.sh install-runner.sh configure-runner.sh"
+CONFIG_SCRIPTS_FILE="package.sh apt.sh git.sh update-ssl-ca.sh install-runner.sh configure-runner.sh"
 
 for script in ${CONFIG_SCRIPTS_FILE}; do
 	echo "# Download/Install $URL_PATH/${script}"
