@@ -125,6 +125,9 @@ parameters:
     default: ""
   GH_TOKEN:
     type: string
+  UPDATE_SSL_CA_URL:
+    type: string
+    default: ""
 
 conditions:
   enable_fip: {equals : [{get_param: enable_fip}, "true"]}
@@ -350,6 +353,10 @@ resources:
                 if [[ -n "$GH_LABEL" ]]; then
                   export GH_LABEL='$GH_LABEL'
                 fi
+                if [[ -n "$UPDATE_SSL_CA_URL" ]]; then
+                  export UPDATE_SSL_CA_URL='$UPDATE_SSL_CA_URL'
+                fi
+
               params:
                 $http_proxy: { get_param: http_proxy }
                 $no_proxy: { get_param: no_proxy }
@@ -360,6 +367,7 @@ resources:
                 $GH_URL: { get_param: GH_URL }
                 $GH_LABEL: { get_param: GH_LABEL }
                 $GH_TOKEN: { get_param: GH_TOKEN }
+                $UPDATE_SSL_CA_URL: { get_param: UPDATE_SSL_CA_URL }
 
   start_install:
     type: "OS::Heat::SoftwareConfig"
